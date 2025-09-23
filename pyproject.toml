@@ -19,6 +19,8 @@ dependencies = [
   # Dependencies only available from PyPI
   "bm3d-streak-removal>=0.2.0,<0.3",
   "pytest-playwright>=0.7.0,<0.8",
+  # Deal with security vulnerabilities in dependencies
+  "h2>=4.3.0",
 ]
 
 [project.optional-dependencies]
