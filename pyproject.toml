@@ -21,6 +21,8 @@ dependencies = [
   "pytest-playwright>=0.7.0,<0.8",
   # Deal with security vulnerabilities in dependencies
   "h2>=4.3.0",
+  "urllib3>=2.6.0",
+  "brotli>=1.2.0",
 ]
 
 [project.optional-dependencies]
@@ -161,11 +163,16 @@ hatch = "*"
 toml-cli = "*"
 
 [tool.pixi.feature.developer.dependencies]
-pip = "*"
+pip = ">=26.0"
 pip-audit = "*"
 pre-commit = "*"
 ruff = "*"
 versioningit = "*"
+# Security: pin transitive dev deps to patched versions
+filelock = ">=3.20.1"
+virtualenv = ">=20.36.1"
+wheel = ">=0.46.2"
+"jaraco.context" = ">=6.1.0"
 
 [tool.pixi.feature.docs.dependencies]
 sphinx = "*"
@@ -202,7 +209,9 @@ conda-publish = { cmd = "anaconda upload *.conda", description = "Publish the .c
   "conda-build",
 ] }
 # Misc
-audit-deps = { cmd = "pip-audit --local -s osv", description = "Audit the package dependencies for vulnerabilities" }
+audit-deps = { cmd = """pip-audit --local -s osv \
+  --ignore-vuln GHSA-r6ph-v2qm-q3c2 \
+  --ignore-vuln GHSA-cfh3-3jmp-rvhc""", description = "Audit the package dependencies for vulnerabilities (cryptography 46.0.5 and pillow 12.1.1 not yet on conda-forge)" }
 clean = { cmd = 'rm -rf .pytest_cache .ruff_cache **/*.egg-info **/dist **/__pycache__', description = "Clean up various caches and build artifacts" }
 clean-conda = { cmd = "rm -f *.conda", description = "Clean the local .conda build artifacts" }
 clean-docs = { cmd = "rm -rf docs/_build", description = "Clean up documentation build artifacts" }
