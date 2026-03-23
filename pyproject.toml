@@ -111,6 +111,8 @@ pyqtgraph = "*"
 qt = "*"
 qtpy = "*"
 pyqt = "*"
+# Security
+pyjwt = ">=2.12.0"           # CVE-2026-32597
 
 [tool.pixi.pypi-dependencies]
 # PyPI dependencies, including this package to allow local editable installs
