@@ -2,6 +2,7 @@ from gc import disable
 from json import load
 
 import marimo
+from pandas import to_datetime
 
 __generated_with = "0.13.0"
 app = marimo.App()
@@ -14,8 +15,9 @@ def _():
 
     IPTS = "IPTS-35112"
     default_roi = {'x_range': [0, 255], 'y_range': [0, 255], 'x_offset': 0, 'y_offset': 0}
-
-    return mo, os, IPTS
+    default_profile ={'xrange': [50,100], 'yrange': [0, 511], 'xoffset': 0, 'yoffset': 0}
+    
+    return mo, os, IPTS, default_roi, default_profile
 
 
 @app.cell
@@ -34,6 +36,7 @@ def _(mo, os, IPTS):
         label="Select a folder",
     )
     mo.vstack([
+        mo.md(f"### Select top folder containing the data to load"),
         mo.md(f"**Default starting path:** `{default_path}`"),
         folder_dropdown,
     ])
@@ -146,8 +149,8 @@ def _(all_data_integrated_dict, mo):
 
 @app.cell
 def _(all_data_integrated_dict, keys, mo, slider_folder_index, default_roi):
-    key = keys[slider_folder_index.value]
-    data = all_data_integrated_dict[key]
+    current_key = keys[slider_folder_index.value]
+    data = all_data_integrated_dict[current_key]
     h, w = data.shape[:2]
 
     x_range = mo.ui.range_slider(start=0, stop=w - 1, value=default_roi['x_range'], label="x range")
@@ -156,13 +159,13 @@ def _(all_data_integrated_dict, keys, mo, slider_folder_index, default_roi):
     y_offset = mo.ui.slider(start=-(h - 1), stop=h - 1, value=default_roi['y_offset'], label="y offset", orientation='horizontal')
 
     mo.vstack([
-        mo.md(f"**Key:** `{key}` ({slider_folder_index.value + 1}/{len(keys)})"),
+        mo.md(f"**Key:** `{current_key}` ({slider_folder_index.value + 1}/{len(keys)})"),
         mo.md("**ROI selection:**"),
         mo.hstack([x_range, x_offset], justify="start"),
         mo.hstack([y_range, y_offset], justify="start"),
     ])
     
-    return data, x_range, x_offset, y_range, y_offset
+    return data, x_range, x_offset, y_range, y_offset, h, w, data, current_key
 
 
 @app.cell
@@ -214,7 +217,7 @@ def _(data, np, mo, px, x_range, x_offset, y_range, y_offset, slider_folder_inde
         mo.vstack([mo.ui.plotly(fig_image)]),
     ])
     
-    return profile
+    return profile, go
 
 
 @app.cell
@@ -285,22 +288,163 @@ def _(mo, all_data_integrated_dict):
 
 
 @app.cell
-def _(mo, all_data_integrated_dict):
+def _(mo, tof_table):
+    # cleaning the table 
+    tof_binning_ranges = {}
+    for key in tof_table.value:
+        if key.startswith("use_") and tof_table.value[key]:
+            _, _index = key.split("_")
+            left_tof_index_tmp = tof_table.value[f"left_tof_{_index}"]
+            right_tof_index_tmp = tof_table.value[f"right_tof_{_index}"]
+            if left_tof_index_tmp < right_tof_index_tmp:
+                tof_binning_ranges[_index] = (left_tof_index_tmp, right_tof_index_tmp)
+    return tof_binning_ranges
+
+
+@app.cell
+def _(mo, all_data_integrated_dict, tof_table):
     # display this only if data have been loaded
-    mo.stop(not all_data_integrated_dict)
+    # print(f"{tof_table.value.keys()=}")
+    def stop_condition(tof_table):
+        for key in tof_table.value:
+            if key.startswith("use_") and tof_table.value[key]:
+                _, _index = key.split("_")
+                left_tof_index = tof_table.value[f"left_tof_{_index}"]
+                right_tof_index = tof_table.value[f"right_tof_{_index}"]
+                if left_tof_index >= right_tof_index:
+                    continue
+                else:
+                    return False
+        return True
     
+    mo.stop(stop_condition(tof_table) or not all_data_integrated_dict)
+            
     # add a horizontal line
     mo.Html("<hr style='border: none; border-top: 5px solid #333; margin: 20px 0;'>")
+    return stop_condition
+
+
+@app.cell
+def _(mo, tof_table, stop_condition):
+    
+    mo.stop(stop_condition(tof_table))
+    mo.vstack([
+        mo.md(f"### Select vertical profile region"),
+    ])
     return
 
 
+@app.cell
+def _(all_data_integrated_dict, current_key, data, keys, mo, h, w, slider_folder_index, default_profile, stop_condition, tof_table):
+    mo.stop(stop_condition(tof_table))
+
+    x_range_profile = mo.ui.range_slider(start=0, stop=w - 1, value=default_profile['xrange'], label="x range")
+    x_offset_profile = mo.ui.slider(start=-(w - 1), stop=w - 1, value=default_profile['xoffset'], label="x offset")
+    y_range_profile = mo.ui.range_slider(start=0, stop=h - 1, value=default_profile['yrange'], label="y range", orientation="horizontal",)
+    y_offset_profile = mo.ui.slider(start=-(h - 1), stop=h - 1, value=default_profile['yoffset'], label="y offset", orientation='horizontal')
+
+    mo.vstack([
+        mo.md(f"**Current working file:** `{current_key}` ({slider_folder_index.value + 1}/{len(keys)})"),
+        mo.md("**Vertical profile selection:**"),
+        mo.hstack([x_range_profile, x_offset_profile], justify="start"),
+        mo.hstack([y_range_profile, y_offset_profile], justify="start"),
+    ])
+    
+    return data, x_range_profile, x_offset_profile, y_range_profile, y_offset_profile, h, w, data
+
+
+# @app.cell
+# def _(stop_condition, tof_table, all_data_dict, current_key, mo):
+#     mo.stop(stop_condition(tof_table))
+    
+#     data_binned_by_tof_selection_dict = {}
+#     for key in tof_table.value:
+#         if key.startswith("use_") and tof_table.value[key]:
+#             _index = key.split("_")[-1]
+#             left_tof_index = tof_table.value[f"left_tof_{_index}"]
+#             right_tof_index = tof_table.value[f"right_tof_{_index}"]
+            
+#             data_binned_by_tof_selection_dict[current_key] = (left_tof_index, right_tof_index)
 
 
 
+@app.cell
+def _(mo, h, w, px, data, tof_table, stop_condition, x_range_profile, x_offset_profile, y_range_profile, y_offset_profile):
+    mo.stop(stop_condition(tof_table))
+   
+    x0_profile = max(0, min(x_range_profile.value[0] + x_offset_profile.value, w - 1))
+    x1_profile = max(0, min(x_range_profile.value[1] + x_offset_profile.value, w - 1))
+    y0_profile = max(0, min(y_range_profile.value[0] + y_offset_profile.value, h - 1))
+    y1_profile = max(0, min(y_range_profile.value[1] + y_offset_profile.value, h - 1))
+
+    fig_image_profile = px.imshow(data)
+    fig_image_profile.update_layout(coloraxis_showscale=True)
+
+    fig_image_profile.add_shape(
+        type="rect",
+        x0=x0_profile, x1=x1_profile,
+        y0=y0_profile, y1=y1_profile,
+        line=dict(color="red", width=2),
+    )
+
+    # fig_profile = px.scatter(x=list(range(len(profile))), y=profile)
+    # fig_profile.update_layout(
+    #     xaxis_title="TOF index",
+    #     yaxis_title="Mean intensity",
+    #     title="Mean counts of the selected ROI along the TOF direction",
+    # )
+
+    mo.vstack([
+        mo.md(
+            f"**ROI:** x=[{x0_profile}, {x1_profile}], "
+            f"y=[{y0_profile}, {y1_profile}]"
+        ),
+        mo.vstack([mo.ui.plotly(fig_image_profile)]),
+    ])
+    
+    return x0_profile, x1_profile, y0_profile, y1_profile
 
 
+@app.cell
+def _(np, x0_profile, x1_profile, y0_profile, y1_profile, current_key, all_data_dict, tof_binning_ranges):
+
+    stack_of_data = all_data_dict[current_key]
+    print(f"{tof_binning_ranges = }")    
+
+    list_profiles_to_display = {}
+    for _tof_key_to_use in tof_binning_ranges.keys():
+        left_tof_index_of_tof, right_tof_index_of_tof = tof_binning_ranges[_tof_key_to_use]
+        data_for_this_tof_range = np.array(stack_of_data[left_tof_index_of_tof:right_tof_index_of_tof])
+        mean_of_data_fo_this_tof_range = np.mean(data_for_this_tof_range, axis=0)
+        mean_of_data_fo_this_tof_range_of_profile_region = mean_of_data_fo_this_tof_range[y0_profile:y1_profile, x0_profile:x1_profile]
+        vertical_profile_for_this_tof_range = np.mean(mean_of_data_fo_this_tof_range_of_profile_region, axis=1)         
+        list_profiles_to_display[_tof_key_to_use] = vertical_profile_for_this_tof_range
+
+    return list_profiles_to_display
 
 
+@app.cell
+def _(list_profiles_to_display, mo, px, tof_binning_ranges, go):
+
+    fig_profiles = go.Figure()
+    for _key, _profile in list_profiles_to_display.items():
+        left, right = tof_binning_ranges[_key]
+        fig_profiles.add_trace(go.Scatter(
+            y=_profile,
+            mode="lines",
+            name=f"TOF [{left}, {right}]",
+        ))
+
+    fig_profiles.update_layout(
+        xaxis_title="Pixel (vertical)",
+        yaxis_title="Mean intensity",
+        title="Vertical profiles for selected TOF ranges",
+    )
+
+    mo.vstack([
+        mo.ui.plotly(fig_profiles),
+    ])
+    return
 
 
 
