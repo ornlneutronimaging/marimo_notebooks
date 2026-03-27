@@ -139,7 +139,7 @@ def _(all_data_integrated_dict, mo):
     
     mo.Html(f"""
     <div style="display:flex; align-items:center; gap:10px;">
-    <span style="min-width:100px;">Select folder index</span>
+    <span style="min-width:100px;">Select data set (run number folder)</span>
     {slider_folder_index}
     </div>
     """)
@@ -329,7 +329,7 @@ def _(mo, tof_table, stop_condition):
     
     mo.stop(stop_condition(tof_table))
     mo.vstack([
-        mo.md(f"### Select vertical profile region"),
+        mo.md(f"### Select vertical profile region for the current run number"),
     ])
     return
 
@@ -448,8 +448,46 @@ def _(list_profiles_to_display, mo, px, tof_binning_ranges, go):
 
 
 
+@app.cell
+def new_hr(mo, tof_binning_ranges):
+    mo.stop(len(tof_binning_ranges) == 0)
+        
+    # add a horizontal line
+    mo.vstack([
+        mo.Html("<hr style='border: none; border-top: 5px solid #333; margin: 20px 0;'>"),
+        mo.md(f"### Display all the profiles (all runs) for each TOF range selected"),
+    ])
+        
+    return
 
 
+@app.cell
+def display_all_profiles(mo, all_data_dict, keys, tof_binning_ranges, px, go, np, x0_profile, x1_profile, y0_profile, y1_profile, ):
+    mo.stop(len(tof_binning_ranges) == 0)
+        
+    for _key_tof in tof_binning_ranges.keys():
+    
+        all_fig_profiles = go.Figure()
+    
+        _left_tof_index_of_tof, _right_tof_index_of_tof = tof_binning_ranges[_key_tof]
+        _all_profiles_for_this_tof_range = {}
+        for _run_number_key in all_data_dict.keys():
+            _data = all_data_dict[_run_number_key]
+            _data_for_this_tof_range = np.array(_data[_left_tof_index_of_tof:_right_tof_index_of_tof])
+            _mean_of_data_fo_this_tof_range = np.mean(_data_for_this_tof_range, axis=0)
+            _mean_of_data_fo_this_tof_range_of_profile_region = _mean_of_data_fo_this_tof_range[y0_profile:y1_profile, x0_profile:x1_profile]
+            _vertical_profile_for_this_tof_range = np.mean(_mean_of_data_fo_this_tof_range_of_profile_region, axis=1)         
+            _all_profiles_for_this_tof_range[_run_number_key] = _vertical_profile_for_this_tof_range
+            
+        for _key in _all_profiles_for_this_tof_range.keys():
+            _profile = _all_profiles_for_this_tof_range[_key]
+            all_fig_profiles.add_trace(go.Scatter(
+                y=_profile,
+                mode="lines",
+                name=f"{_key}",
+            ))    
+        
+    return
 
 if __name__ == "__main__":
     app.run()
