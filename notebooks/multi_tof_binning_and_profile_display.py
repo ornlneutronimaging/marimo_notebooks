@@ -5,7 +5,7 @@ import marimo
 from pandas import to_datetime
 
 __generated_with = "0.13.0"
-app = marimo.App()
+app = marimo.App(width="full")
 
 
 @app.cell
@@ -464,29 +464,52 @@ def new_hr(mo, tof_binning_ranges):
 @app.cell
 def display_all_profiles(mo, all_data_dict, keys, tof_binning_ranges, px, go, np, x0_profile, x1_profile, y0_profile, y1_profile, ):
     mo.stop(len(tof_binning_ranges) == 0)
-        
-    for _key_tof in tof_binning_ranges.keys():
     
-        all_fig_profiles = go.Figure()
+    def get_fig_of_tof_index(key):
     
-        _left_tof_index_of_tof, _right_tof_index_of_tof = tof_binning_ranges[_key_tof]
-        _all_profiles_for_this_tof_range = {}
-        for _run_number_key in all_data_dict.keys():
-            _data = all_data_dict[_run_number_key]
-            _data_for_this_tof_range = np.array(_data[_left_tof_index_of_tof:_right_tof_index_of_tof])
-            _mean_of_data_fo_this_tof_range = np.mean(_data_for_this_tof_range, axis=0)
-            _mean_of_data_fo_this_tof_range_of_profile_region = _mean_of_data_fo_this_tof_range[y0_profile:y1_profile, x0_profile:x1_profile]
-            _vertical_profile_for_this_tof_range = np.mean(_mean_of_data_fo_this_tof_range_of_profile_region, axis=1)         
-            _all_profiles_for_this_tof_range[_run_number_key] = _vertical_profile_for_this_tof_range
-            
-        for _key in _all_profiles_for_this_tof_range.keys():
-            _profile = _all_profiles_for_this_tof_range[_key]
-            all_fig_profiles.add_trace(go.Scatter(
-                y=_profile,
+        if key not in tof_binning_ranges:
+            return None
+    
+        fig = go.Figure()
+        for _key in all_data_dict.keys():
+            data_for_this_key = all_data_dict[_key]
+            data_for_this_tof_range = np.array(data_for_this_key[tof_binning_ranges[key][0]:tof_binning_ranges[key][1]])
+            mean_of_data_fo_this_tof_range = np.mean(data_for_this_tof_range, axis=0)
+            mean_of_data_fo_this_tof_range_of_profile_region = mean_of_data_fo_this_tof_range[y0_profile:y1_profile, x0_profile:x1_profile]
+            vertical_profile_for_this_tof_range = np.mean(mean_of_data_fo_this_tof_range_of_profile_region, axis=1)         
+            fig.add_trace(go.Scatter(
+                y=vertical_profile_for_this_tof_range,
                 mode="lines",
                 name=f"{_key}",
             ))    
-        
+        fig.update_layout(
+            xaxis_title="Pixel (vertical)",
+            yaxis_title="Mean intensity",
+            title=f"Vertical profiles for TOF range [{tof_binning_ranges[key][0]}, {tof_binning_ranges[key][1]}]",
+        )
+        return fig
+    
+    fig_of_tof_0 = get_fig_of_tof_index(key='0')
+
+    fig_of_tof_1 = get_fig_of_tof_index(key='1')
+    fig_of_tof_2 = get_fig_of_tof_index(key='2')
+    fig_of_tof_3 = get_fig_of_tof_index(key='3')
+    fig_of_tof_4 = get_fig_of_tof_index(key='4')
+    
+    list_figs = []
+    if fig_of_tof_0 is not None:
+        list_figs.append(fig_of_tof_0)
+    if fig_of_tof_1 is not None:
+        list_figs.append(fig_of_tof_1)
+    if fig_of_tof_2 is not None:
+        list_figs.append(fig_of_tof_2)
+    if fig_of_tof_3 is not None:    
+        list_figs.append(fig_of_tof_3)
+    if fig_of_tof_4 is not None:
+        list_figs.append(fig_of_tof_4)
+
+    mo.vstack([mo.ui.plotly(fig) for fig in list_figs])
+    
     return
 
 if __name__ == "__main__":
