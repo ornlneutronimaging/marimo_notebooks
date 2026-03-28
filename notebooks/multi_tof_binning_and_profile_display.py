@@ -456,7 +456,7 @@ def new_hr(mo, tof_binning_ranges):
     # add a horizontal line
     mo.vstack([
         mo.Html("<hr style='border: none; border-top: 5px solid #333; margin: 20px 0;'>"),
-        mo.md(f"### Display all the profiles (all runs) for each TOF range selected"),
+        mo.md(f"### For each TOF range selected, the profiles of all the runs are displayed on a same plot"),
     ])
         
     return
@@ -559,7 +559,8 @@ def create_new_export_folder(mo, os, create_folder_button, new_folder_name, expo
     
     parent = export_folder_browser.value[0].path if export_folder_browser.value else export_default_path
     folder_name = new_folder_name.value.strip()
-    
+    full_path_of_new_output_folder = parent        
+
     if not folder_name:
         mo.callout(mo.md("Please enter a folder name."), kind="warn")
     else:
@@ -569,11 +570,16 @@ def create_new_export_folder(mo, os, create_folder_button, new_folder_name, expo
         else:
             os.makedirs(new_path, exist_ok=True)
             mo.callout(mo.md(f"Created folder: `{new_path}`"), kind="success")
-    return
+    
+        full_path_of_new_output_folder = new_path
+      
+    return full_path_of_new_output_folder
 
 
 @app.cell
-def export_button(mo):
+def export_button(mo, tof_binning_ranges):
+    mo.stop(len(tof_binning_ranges) == 0)
+        
     export_button = mo.ui.run_button(label="Export the images and profiles for the selected TOF ranges and profile regions")
     export_button
     
@@ -581,11 +587,12 @@ def export_button(mo):
 
 
 @app.cell
-def export_button_clicked(export_button, export_folder_browser, mo, os):
+def export_button_clicked(export_button, export_folder_browser, mo, os, full_path_of_new_output_folder):
     
     mo.stop(not export_button.value)
     export_location = export_folder_browser.path if export_folder_browser.value else None
-    print(f"Exporting data to {export_location}...")
+
+    print(f"Exporting data to: {full_path_of_new_output_folder}")
 
 
 
