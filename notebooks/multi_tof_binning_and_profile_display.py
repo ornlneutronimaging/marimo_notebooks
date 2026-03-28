@@ -97,6 +97,7 @@ def _(run_button, folder_dropdown, default_path, mo, os):
         for index in mo.status.progress_bar(range(len(all_data_filepath_dict.keys())), 
                                             title="Loading data...",
                                             subtitle="Please wait",
+                                            # width="full",
                                             show_eta=True,
                                             show_rate=True):
             _key = list(all_data_filepath_dict.keys())[index]
@@ -511,6 +512,86 @@ def display_all_profiles(mo, all_data_dict, keys, tof_binning_ranges, px, go, np
     mo.vstack([mo.ui.plotly(fig) for fig in list_figs])
     
     return
+
+
+@app.cell
+def new_hr_before_export(mo, tof_binning_ranges):
+    mo.stop(len(tof_binning_ranges) == 0)
+        
+    # add a horizontal line
+    mo.vstack([
+        mo.Html("<hr style='border: none; border-top: 5px solid #333; margin: 20px 0;'>"),
+        mo.md(f"### Export images"),
+        mo.md(f"Each TOF range selected will create its own folder where the integrated image of each run will be saved, along with a CSV file containing the profiles."),
+    ])
+        
+    return 
+
+
+@app.cell
+def export_folder_selection(mo, tof_binning_ranges, IPTS):
+    mo.stop(len(tof_binning_ranges) == 0)
+        
+    export_default_path = f"/SNS/VENUS/{IPTS}/shared/"
+    export_folder_browser = mo.ui.file_browser(
+        initial_path=export_default_path,
+        selection_mode="directory",
+        multiple=False,
+        restrict_navigation=False,
+        label="Select export folder",
+    )
+
+    new_folder_name = mo.ui.text(label="New folder name", placeholder="e.g. my_export")
+    create_folder_button = mo.ui.run_button(label="Create folder")
+
+    mo.vstack([
+        export_folder_browser,
+        mo.md("**Or create a new folder inside the selected directory:**"),
+        mo.hstack([new_folder_name, create_folder_button], justify="start"),
+    ])
+        
+    return export_default_path, export_folder_browser, new_folder_name, create_folder_button
+
+
+@app.cell
+def create_new_export_folder(mo, os, create_folder_button, new_folder_name, export_folder_browser, export_default_path):
+    mo.stop(not create_folder_button.value)
+    
+    parent = export_folder_browser.value[0].path if export_folder_browser.value else export_default_path
+    folder_name = new_folder_name.value.strip()
+    
+    if not folder_name:
+        mo.callout(mo.md("Please enter a folder name."), kind="warn")
+    else:
+        new_path = os.path.join(parent, folder_name)
+        if os.path.exists(new_path):
+            mo.callout(mo.md(f"Folder already exists: `{new_path}`"), kind="warn")
+        else:
+            os.makedirs(new_path, exist_ok=True)
+            mo.callout(mo.md(f"Created folder: `{new_path}`"), kind="success")
+    return
+
+
+@app.cell
+def export_button(mo):
+    export_button = mo.ui.run_button(label="Export the images and profiles for the selected TOF ranges and profile regions")
+    export_button
+    
+    return (export_button,)
+
+
+@app.cell
+def export_button_clicked(export_button, export_folder_browser, mo, os):
+    
+    mo.stop(not export_button.value)
+    export_location = export_folder_browser.path if export_folder_browser.value else None
+    print(f"Exporting data to {export_location}...")
+
+
+
+
+
+
 
 if __name__ == "__main__":
     app.run()
