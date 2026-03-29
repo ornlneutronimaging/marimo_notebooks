@@ -1,10 +1,6 @@
-from gc import disable
-from json import load
-
 import marimo
-from pandas import to_datetime
 
-__generated_with = "0.13.0"
+__generated_with = "0.15.2"
 app = marimo.App(width="full")
 
 
@@ -16,13 +12,13 @@ def _():
     IPTS = "IPTS-35112"
     default_roi = {'x_range': [0, 255], 'y_range': [0, 255], 'x_offset': 0, 'y_offset': 0}
     default_profile ={'xrange': [50,100], 'yrange': [0, 511], 'xoffset': 0, 'yoffset': 0}
-    
-    return mo, os, IPTS, default_roi, default_profile
+
+    return IPTS, default_profile, default_roi, mo, os
 
 
 @app.cell
-def _(mo, os, IPTS):
-    
+def _(IPTS, mo, os):
+
     default_path = f"/SNS/VENUS/{IPTS}/shared/autoreduce/images/tpx1/raw/radiography/"
     entries = sorted(
         [
@@ -51,12 +47,12 @@ def _(mo):
 
 
 @app.cell
-def _(run_button, folder_dropdown, default_path, mo, os):
-    
+def _(default_path, folder_dropdown, mo, os, run_button):
+
     from tqdm import tqdm
     import tifffile
     import numpy as np
-    
+
     def retrieve_data_filepath(full_path):
         # Placeholder for data retrieval logic
         # This function should return the file paths of the data needed for binning and profile display
@@ -64,36 +60,36 @@ def _(run_button, folder_dropdown, default_path, mo, os):
         import glob
         list_folders = os.listdir(full_path)
         list_folders.sort()
-        
+
         data_filepath_dict = {}
         for _folder in list_folders:
             list_files = glob.glob(os.path.join(full_path, _folder, "*.tif*"))
             list_files.sort()
             data_filepath_dict[_folder] = list_files
-        
+
         return data_filepath_dict
-    
+
     mo.stop(not run_button.value, mo.md("_Click the button to load the selected folder._"))
     selected = folder_dropdown.value
-    
+
     if selected:
         full_path = os.path.join(default_path, selected)
         mo.md(f"**Selected folder:** {full_path}")
         all_data_filepath_dict = retrieve_data_filepath(full_path)
         # print(f"{all_data_filepath_dict=}")
-        
+
         mo.vstack([
             mo.md(f"{len(all_data_filepath_dict)} folders found in the selected folder."),
             mo.md("**Data file paths:**"),
         ])
-        
+
         # loading the data
         all_data_dict = {}
         all_data_integrated_dict = {}
-        
+
         # print(f"{all_data_filepath_dict.keys()=}")
         # print(f"{len(all_data_filepath_dict.keys())=}")
-                
+
         for index in mo.status.progress_bar(range(len(all_data_filepath_dict.keys())), 
                                             title="Loading data...",
                                             subtitle="Please wait",
@@ -109,11 +105,11 @@ def _(run_button, folder_dropdown, default_path, mo, os):
                     data_array.append(_image)
             all_data_dict[_key] = data_array
             all_data_integrated_dict[_key] = np.sum(data_array, axis=0)
-                        
+
     else:
         mo.md("_No folder selected yet._")
-    
-    return np, all_data_dict, all_data_integrated_dict
+
+    return all_data_dict, all_data_integrated_dict, np, tqdm
 
 
 @app.cell
@@ -137,19 +133,19 @@ def _(all_data_integrated_dict, mo):
         show_value=True,
     )
     # slider_folder_index
-    
+
     mo.Html(f"""
     <div style="display:flex; align-items:center; gap:10px;">
     <span style="min-width:100px;">Select data set (run number folder)</span>
     {slider_folder_index}
     </div>
     """)
-    
+
     return keys, px, slider_folder_index
 
 
 @app.cell
-def _(all_data_integrated_dict, keys, mo, slider_folder_index, default_roi):
+def _(all_data_integrated_dict, default_roi, keys, mo, slider_folder_index):
     current_key = keys[slider_folder_index.value]
     data = all_data_integrated_dict[current_key]
     h, w = data.shape[:2]
@@ -165,20 +161,33 @@ def _(all_data_integrated_dict, keys, mo, slider_folder_index, default_roi):
         mo.hstack([x_range, x_offset], justify="start"),
         mo.hstack([y_range, y_offset], justify="start"),
     ])
-    
-    return data, x_range, x_offset, y_range, y_offset, h, w, data, current_key
+
+    return current_key, data, h, w, x_offset, x_range, y_offset, y_range
 
 
 @app.cell
-def _(x_range, x_offset, y_range, y_offset, default_roi):
+def _(default_roi, x_offset, x_range, y_offset, y_range):
     default_roi['x_range'] = x_range.value
     default_roi['y_range'] = y_range.value
     default_roi['x_offset'] = x_offset.value
     default_roi['y_offset'] = y_offset.value
+    return
 
 
 @app.cell
-def _(data, np, mo, px, x_range, x_offset, y_range, y_offset, slider_folder_index, all_data_dict, keys):
+def _(
+    all_data_dict,
+    data,
+    keys,
+    mo,
+    np,
+    px,
+    slider_folder_index,
+    x_offset,
+    x_range,
+    y_offset,
+    y_range,
+):
     import plotly.graph_objects as go
 
     h2, w2 = data.shape[:2]
@@ -192,8 +201,9 @@ def _(data, np, mo, px, x_range, x_offset, y_range, y_offset, slider_folder_inde
     profile = []
     for _data in data_selected:
         profile.append(np.mean(_data[y0:y1, x0:x1]))
-    
-    fig_image = px.imshow(data)
+
+    data_clipped_2 = np.clip(data, np.percentile(data, 2), np.percentile(data, 98))
+    fig_image = px.imshow(data_clipped_2)
     fig_image.update_layout(coloraxis_showscale=True)
 
     fig_image.add_shape(
@@ -216,21 +226,22 @@ def _(data, np, mo, px, x_range, x_offset, y_range, y_offset, slider_folder_inde
             f"y=[{y0}, {y1}]"
         ),
         mo.vstack([mo.ui.plotly(fig_image)]),
+        mo.Html("<span style='text-align: center; font-size: 10px; color: gray;'>NB: Plot limited to 2nd and 98th percentiles.</span>"),
     ])
-    
-    return profile, go
+
+    return go, profile
 
 
 @app.cell
-def _(profile, np, px, mo, tof_table):
-    
+def _(mo, np, profile, px, tof_table):
+
     fig_profile = px.scatter(x=list(range(len(profile))), y=profile)
     fig_profile.update_layout(
         xaxis_title="TOF index",
         yaxis_title="Mean intensity",
         title="Mean counts of the selected ROI along the TOF direction",
     )
-    
+
     index_to_use = np.arange(5)
     list_keys = [f"use_{i}" for i in index_to_use]
     for my_key in list_keys:
@@ -248,14 +259,14 @@ def _(profile, np, px, mo, tof_table):
     mo.vstack([
         mo.vstack([mo.ui.plotly(fig_profile)]),
     ])
-    
+
     return
-    
+
 
 @app.cell
-def _(mo, all_data_integrated_dict):
+def _(all_data_integrated_dict, mo):
     mo.stop(not all_data_integrated_dict)
-     
+
     num_rows = 5
     tof_table = mo.ui.dictionary({
         f"use_{i}": mo.ui.checkbox(label="") for i in range(num_rows)
@@ -289,7 +300,7 @@ def _(mo, all_data_integrated_dict):
 
 
 @app.cell
-def _(mo, tof_table):
+def _(tof_table):
     # cleaning the table 
     tof_binning_ranges = {}
     for key in tof_table.value:
@@ -299,11 +310,11 @@ def _(mo, tof_table):
             right_tof_index_tmp = tof_table.value[f"right_tof_{_index}"]
             if left_tof_index_tmp < right_tof_index_tmp:
                 tof_binning_ranges[_index] = (left_tof_index_tmp, right_tof_index_tmp)
-    return tof_binning_ranges
+    return (tof_binning_ranges,)
 
 
 @app.cell
-def _(mo, all_data_integrated_dict, tof_table):
+def _(all_data_integrated_dict, mo, tof_table):
     # display this only if data have been loaded
     # print(f"{tof_table.value.keys()=}")
     def stop_condition(tof_table):
@@ -317,17 +328,17 @@ def _(mo, all_data_integrated_dict, tof_table):
                 else:
                     return False
         return True
-    
+
     mo.stop(stop_condition(tof_table) or not all_data_integrated_dict)
-            
+
     # add a horizontal line
     mo.Html("<hr style='border: none; border-top: 5px solid #333; margin: 20px 0;'>")
-    return stop_condition
+    return (stop_condition,)
 
 
 @app.cell
-def _(mo, tof_table, stop_condition):
-    
+def _(mo, stop_condition, tof_table):
+
     mo.stop(stop_condition(tof_table))
     mo.vstack([
         mo.md(f"### Select vertical profile region for the current run number"),
@@ -336,7 +347,17 @@ def _(mo, tof_table, stop_condition):
 
 
 @app.cell
-def _(all_data_integrated_dict, current_key, data, keys, mo, h, w, slider_folder_index, default_profile, stop_condition, tof_table):
+def _(
+    current_key,
+    default_profile,
+    h,
+    keys,
+    mo,
+    slider_folder_index,
+    stop_condition,
+    tof_table,
+    w,
+):
     mo.stop(stop_condition(tof_table))
 
     x_range_profile = mo.ui.range_slider(start=0, stop=w - 1, value=default_profile['xrange'], label="x range")
@@ -350,35 +371,37 @@ def _(all_data_integrated_dict, current_key, data, keys, mo, h, w, slider_folder
         mo.hstack([x_range_profile, x_offset_profile], justify="start"),
         mo.hstack([y_range_profile, y_offset_profile], justify="start"),
     ])
-    
-    return data, x_range_profile, x_offset_profile, y_range_profile, y_offset_profile, h, w, data
 
-
-# @app.cell
-# def _(stop_condition, tof_table, all_data_dict, current_key, mo):
-#     mo.stop(stop_condition(tof_table))
-    
-#     data_binned_by_tof_selection_dict = {}
-#     for key in tof_table.value:
-#         if key.startswith("use_") and tof_table.value[key]:
-#             _index = key.split("_")[-1]
-#             left_tof_index = tof_table.value[f"left_tof_{_index}"]
-#             right_tof_index = tof_table.value[f"right_tof_{_index}"]
-            
-#             data_binned_by_tof_selection_dict[current_key] = (left_tof_index, right_tof_index)
-
+    return x_offset_profile, x_range_profile, y_offset_profile, y_range_profile
 
 
 @app.cell
-def _(mo, h, w, px, data, tof_table, stop_condition, x_range_profile, x_offset_profile, y_range_profile, y_offset_profile):
+def _(
+    data,
+    h,
+    mo,
+    np,
+    px,
+    stop_condition,
+    tof_table,
+    w,
+    x_offset_profile,
+    x_range_profile,
+    y_offset_profile,
+    y_range_profile,
+):
     mo.stop(stop_condition(tof_table))
-   
+
     x0_profile = max(0, min(x_range_profile.value[0] + x_offset_profile.value, w - 1))
     x1_profile = max(0, min(x_range_profile.value[1] + x_offset_profile.value, w - 1))
     y0_profile = max(0, min(y_range_profile.value[0] + y_offset_profile.value, h - 1))
     y1_profile = max(0, min(y_range_profile.value[1] + y_offset_profile.value, h - 1))
 
-    fig_image_profile = px.imshow(data)
+    # Limit the range to 2 to 98% of the histogram to avoid outliers dominating the color scale
+    data_limited = np.percentile(data, [2, 98])
+    data_clipped = np.clip(data, data_limited[0], data_limited[1])
+
+    fig_image_profile = px.imshow(data_clipped)
     fig_image_profile.update_layout(coloraxis_showscale=True)
 
     fig_image_profile.add_shape(
@@ -398,16 +421,26 @@ def _(mo, h, w, px, data, tof_table, stop_condition, x_range_profile, x_offset_p
     mo.vstack([
         mo.md(
             f"**ROI:** x=[{x0_profile}, {x1_profile}], "
-            f"y=[{y0_profile}, {y1_profile}]"
+            f"y=[{y0_profile}, {y1_profile}]",
         ),
         mo.vstack([mo.ui.plotly(fig_image_profile)]),
+        mo.Html("<span style='text-align: center; font-size: 10px; color: gray;'>NB: Plot limited to 2nd and 98th percentiles.</span>"),
     ])
-    
+
     return x0_profile, x1_profile, y0_profile, y1_profile
 
 
 @app.cell
-def _(np, x0_profile, x1_profile, y0_profile, y1_profile, current_key, all_data_dict, tof_binning_ranges):
+def _(
+    all_data_dict,
+    current_key,
+    np,
+    tof_binning_ranges,
+    x0_profile,
+    x1_profile,
+    y0_profile,
+    y1_profile,
+):
 
     stack_of_data = all_data_dict[current_key]
     print(f"{tof_binning_ranges = }")    
@@ -420,12 +453,11 @@ def _(np, x0_profile, x1_profile, y0_profile, y1_profile, current_key, all_data_
         mean_of_data_fo_this_tof_range_of_profile_region = mean_of_data_fo_this_tof_range[y0_profile:y1_profile, x0_profile:x1_profile]
         vertical_profile_for_this_tof_range = np.mean(mean_of_data_fo_this_tof_range_of_profile_region, axis=1)         
         list_profiles_to_display[_tof_key_to_use] = vertical_profile_for_this_tof_range
-
-    return list_profiles_to_display
+    return (list_profiles_to_display,)
 
 
 @app.cell
-def _(list_profiles_to_display, mo, px, tof_binning_ranges, go):
+def _(go, list_profiles_to_display, mo, tof_binning_ranges):
 
     fig_profiles = go.Figure()
     for _key, _profile in list_profiles_to_display.items():
@@ -448,29 +480,38 @@ def _(list_profiles_to_display, mo, px, tof_binning_ranges, go):
     return
 
 
-
 @app.cell
 def new_hr(mo, tof_binning_ranges):
     mo.stop(len(tof_binning_ranges) == 0)
-        
+
     # add a horizontal line
     mo.vstack([
         mo.Html("<hr style='border: none; border-top: 5px solid #333; margin: 20px 0;'>"),
         mo.md(f"### For each TOF range selected, the profiles of all the runs are displayed on a same plot"),
     ])
-        
+
     return
 
 
 @app.cell
-def display_all_profiles(mo, all_data_dict, keys, tof_binning_ranges, px, go, np, x0_profile, x1_profile, y0_profile, y1_profile, ):
+def display_all_profiles(
+    all_data_dict,
+    go,
+    mo,
+    np,
+    tof_binning_ranges,
+    x0_profile,
+    x1_profile,
+    y0_profile,
+    y1_profile,
+):
     mo.stop(len(tof_binning_ranges) == 0)
-    
+
     def get_fig_of_tof_index(key):
-    
+
         if key not in tof_binning_ranges:
             return None
-    
+
         fig = go.Figure()
         for _key in all_data_dict.keys():
             data_for_this_key = all_data_dict[_key]
@@ -489,14 +530,14 @@ def display_all_profiles(mo, all_data_dict, keys, tof_binning_ranges, px, go, np
             title=f"Vertical profiles for TOF range [{tof_binning_ranges[key][0]}, {tof_binning_ranges[key][1]}]",
         )
         return fig
-    
+
     fig_of_tof_0 = get_fig_of_tof_index(key='0')
 
     fig_of_tof_1 = get_fig_of_tof_index(key='1')
     fig_of_tof_2 = get_fig_of_tof_index(key='2')
     fig_of_tof_3 = get_fig_of_tof_index(key='3')
     fig_of_tof_4 = get_fig_of_tof_index(key='4')
-    
+
     list_figs = []
     if fig_of_tof_0 is not None:
         list_figs.append(fig_of_tof_0)
@@ -510,28 +551,28 @@ def display_all_profiles(mo, all_data_dict, keys, tof_binning_ranges, px, go, np
         list_figs.append(fig_of_tof_4)
 
     mo.vstack([mo.ui.plotly(fig) for fig in list_figs])
-    
+
     return
 
 
 @app.cell
 def new_hr_before_export(mo, tof_binning_ranges):
     mo.stop(len(tof_binning_ranges) == 0)
-        
+
     # add a horizontal line
     mo.vstack([
         mo.Html("<hr style='border: none; border-top: 5px solid #333; margin: 20px 0;'>"),
         mo.md(f"### Export images"),
         mo.md(f"Each TOF range selected will create its own folder where the integrated image of each run will be saved, along with a CSV file containing the profiles."),
     ])
-        
-    return 
+
+    return
 
 
 @app.cell
-def export_folder_selection(mo, tof_binning_ranges, IPTS):
+def export_folder_selection(IPTS, mo, tof_binning_ranges):
     mo.stop(len(tof_binning_ranges) == 0)
-        
+
     export_default_path = f"/SNS/VENUS/{IPTS}/shared/"
     export_folder_browser = mo.ui.file_browser(
         initial_path=export_default_path,
@@ -542,62 +583,76 @@ def export_folder_selection(mo, tof_binning_ranges, IPTS):
     )
 
     new_folder_name = mo.ui.text(label="New folder name", placeholder="e.g. my_export")
-    create_folder_button = mo.ui.run_button(label="Create folder")
 
     mo.vstack([
         export_folder_browser,
         mo.md("**Or create a new folder inside the selected directory:**"),
-        mo.hstack([new_folder_name, create_folder_button], justify="start"),
+        new_folder_name,
     ])
-        
-    return export_default_path, export_folder_browser, new_folder_name, create_folder_button
 
-
-@app.cell
-def create_new_export_folder(mo, os, create_folder_button, new_folder_name, export_folder_browser, export_default_path):
-    mo.stop(not create_folder_button.value)
-    
-    parent = export_folder_browser.value[0].path if export_folder_browser.value else export_default_path
-    folder_name = new_folder_name.value.strip()
-    full_path_of_new_output_folder = parent        
-
-    if not folder_name:
-        mo.callout(mo.md("Please enter a folder name."), kind="warn")
-    else:
-        new_path = os.path.join(parent, folder_name)
-        if os.path.exists(new_path):
-            mo.callout(mo.md(f"Folder already exists: `{new_path}`"), kind="warn")
-        else:
-            os.makedirs(new_path, exist_ok=True)
-            mo.callout(mo.md(f"Created folder: `{new_path}`"), kind="success")
-    
-        full_path_of_new_output_folder = new_path
-      
-    return full_path_of_new_output_folder
+    return export_folder_browser, new_folder_name
 
 
 @app.cell
 def export_button(mo, tof_binning_ranges):
     mo.stop(len(tof_binning_ranges) == 0)
-        
+
     export_button = mo.ui.run_button(label="Export the images and profiles for the selected TOF ranges and profile regions")
     export_button
-    
+
     return (export_button,)
 
 
 @app.cell
-def export_button_clicked(export_button, export_folder_browser, mo, os, full_path_of_new_output_folder):
-    
+def export_button_clicked(
+    all_data_dict,
+    export_button,
+    export_folder_browser,
+    mo,
+    new_folder_name,
+    np,
+    os,
+    tof_binning_ranges,
+    tqdm,
+    x0_profile,
+    x1_profile,
+    y0_profile,
+    y1_profile,
+):
+
     mo.stop(not export_button.value)
-    export_location = export_folder_browser.path if export_folder_browser.value else None
+
+    if new_folder_name.value.strip():
+        parent = export_folder_browser.value[0].path if export_folder_browser.value else full_path_of_new_output_folder
+        folder_name = new_folder_name.value.strip()
+        full_path_of_new_output_folder = os.path.join(parent, folder_name)
+        if not os.path.exists(full_path_of_new_output_folder):
+            os.makedirs(full_path_of_new_output_folder, exist_ok=True)
+            mo.callout(mo.md(f"Created folder: `{full_path_of_new_output_folder}`"), kind="success")
+        else:
+            mo.callout(mo.md(f"Folder already exists: `{full_path_of_new_output_folder}`"), kind="warn")
+    else:
+        full_path_of_new_output_folder = export_folder_browser.value[0].path if export_folder_browser.value else None
 
     print(f"Exporting data to: {full_path_of_new_output_folder}")
 
+    # export bin images (each in a separate folder named after the TOF range) and profiles (in a CSV file)
+    for _tof_key in tqdm(tof_binning_ranges.keys()):
+        _left_tof_index = tof_binning_ranges[_tof_key][0]
+        _right_tof_index = tof_binning_ranges[_tof_key][1]
+        _folder_name_for_this_tof_range = f"TOF_{_left_tof_index}_{_right_tof_index}"
+        _full_path_for_this_tof_range = os.path.join(full_path_of_new_output_folder, _folder_name_for_this_tof_range)
+        os.makedirs(_full_path_for_this_tof_range, exist_ok=True)
 
+        for _folder_key in tqdm(all_data_dict.keys()):
+            _data_for_this_key = all_data_dict[_folder_key]
+            _data_for_this_tof_range = np.array(_data_for_this_key[tof_binning_ranges[_tof_key][0]:tof_binning_ranges[_tof_key][1]])
+            _mean_of_data_fo_this_tof_range = np.mean(_data_for_this_tof_range, axis=0) # export this as an image
+            _mean_of_data_fo_this_tof_range_of_profile_region = _mean_of_data_fo_this_tof_range[y0_profile:y1_profile, x0_profile:x1_profile]
+            _vertical_profile_for_this_tof_range = np.mean(_mean_of_data_fo_this_tof_range_of_profile_region, axis=1)  # add to list of profiles
 
-
-
+            print(f"{_vertical_profile_for_this_tof_range = } for key {_folder_key} and TOF range {_tof_key}")
+    return (full_path_of_new_output_folder,)
 
 
 if __name__ == "__main__":
