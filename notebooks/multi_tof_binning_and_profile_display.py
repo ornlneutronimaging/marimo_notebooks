@@ -620,10 +620,12 @@ def export_button_clicked(
     y1_profile,
 ):
 
+    from tifffile import imwrite
+    
     mo.stop(not export_button.value)
 
     if new_folder_name.value.strip():
-        parent = export_folder_browser.value[0].path if export_folder_browser.value else full_path_of_new_output_folder
+        parent = export_folder_browser.value[0].path
         folder_name = new_folder_name.value.strip()
         full_path_of_new_output_folder = os.path.join(parent, folder_name)
         if not os.path.exists(full_path_of_new_output_folder):
@@ -634,25 +636,86 @@ def export_button_clicked(
     else:
         full_path_of_new_output_folder = export_folder_browser.value[0].path if export_folder_browser.value else None
 
-    print(f"Exporting data to: {full_path_of_new_output_folder}")
-
     # export bin images (each in a separate folder named after the TOF range) and profiles (in a CSV file)
+    _first_time_looping_names = True
+    _metadata_list_of_input_files = []
+    full_list_mo_messages = []
     for _tof_key in tqdm(tof_binning_ranges.keys()):
         _left_tof_index = tof_binning_ranges[_tof_key][0]
         _right_tof_index = tof_binning_ranges[_tof_key][1]
-        _folder_name_for_this_tof_range = f"TOF_{_left_tof_index}_{_right_tof_index}"
+        _folder_name_for_this_tof_range = f"file_index_range_{_left_tof_index}_{_right_tof_index}"
         _full_path_for_this_tof_range = os.path.join(full_path_of_new_output_folder, _folder_name_for_this_tof_range)
         os.makedirs(_full_path_for_this_tof_range, exist_ok=True)
 
+        _profiles_for_this_tof_range = []
         for _folder_key in tqdm(all_data_dict.keys()):
+            
+            if _first_time_looping_names:
+                _metadata_list_of_input_files.append(_folder_key)
+                
+            _from_tof = tof_binning_ranges[_tof_key][0]
+            _to_tof = tof_binning_ranges[_tof_key][1]
+            
+            # make up image file name
+            _image_file_name = f"{_folder_key}.tif"
+            _full_path_image_file_name = os.path.join(_full_path_for_this_tof_range, _image_file_name)
             _data_for_this_key = all_data_dict[_folder_key]
-            _data_for_this_tof_range = np.array(_data_for_this_key[tof_binning_ranges[_tof_key][0]:tof_binning_ranges[_tof_key][1]])
+            _data_for_this_tof_range = np.array(_data_for_this_key[_from_tof:_to_tof])
             _mean_of_data_fo_this_tof_range = np.mean(_data_for_this_tof_range, axis=0) # export this as an image
+            
+            # save image
+            from tifffile import imwrite
+            imwrite(_full_path_image_file_name, _mean_of_data_fo_this_tof_range.astype(np.float32))
+            
+            # create profiles
             _mean_of_data_fo_this_tof_range_of_profile_region = _mean_of_data_fo_this_tof_range[y0_profile:y1_profile, x0_profile:x1_profile]
             _vertical_profile_for_this_tof_range = np.mean(_mean_of_data_fo_this_tof_range_of_profile_region, axis=1)  # add to list of profiles
+            _profiles_for_this_tof_range.append(_vertical_profile_for_this_tof_range)
 
             print(f"{_vertical_profile_for_this_tof_range = } for key {_folder_key} and TOF range {_tof_key}")
-    return (full_path_of_new_output_folder,)
+    
+        _first_time_looping_names = False
+    
+        _metadata_to_export = ["# Counts vs pixel position"]
+        _metadata_to_export.append(f"#average counts of width of profile is used!")
+        _metadata_to_export.append(f"#Profile dimension:")
+        _metadata_to_export.append(f"# * [x0, y0, x1, y1] = [{x0_profile}, {y0_profile}, {x1_profile}, {y1_profile}]")
+        _metadata_to_export.append("# * integrated over x-axis")
+        _metadata_to_export.append(f"#List of files ({len(all_data_dict.keys())} files)")
+        _xaxis_legend = f"##y_axis"
+        for _col_index, _image_file_name in enumerate(_metadata_list_of_input_files):
+            _metadata_to_export.append(f" * {_image_file_name}")
+            _xaxis_legend += f",# col.{_col_index}"
+        
+        _metadata_to_export.append(f"#")
+        _metadata_to_export.append(_xaxis_legend)
+        
+        # making the big table
+        list_y = np.arange(y0_profile, y1_profile)
+        for _index, _y_pixel in enumerate(list_y):
+            _row = [str(_y_pixel)]
+            for _profile in _profiles_for_this_tof_range:
+                _row.append(str(_profile[_index]))
+            _str_row = ", ".join(_row)
+            _metadata_to_export.append(_str_row)       
+            
+        # name of profile file
+        full_path_profile_file_name = os.path.join(_full_path_for_this_tof_range, "list_profiles.txt")
+        
+        with open(full_path_profile_file_name, "w") as f:
+            for _meta in _metadata_to_export:
+                _line = _meta + "\n"
+                f.write(_line)
+        
+        _list_mo_messages = [mo.md(f"Working with {_tof_key} and images/profiles exported to {_full_path_for_this_tof_range}:"),
+                            mo.md(f"\tCreated ASCII file {full_path_profile_file_name}!"),
+                            mo.md(f"\tImages created!")]
+        
+        full_list_mo_messages.append(_list_mo_messages)
+    
+    mo.vstack(full_list_mo_messages)
+    
+    return (full_path_of_new_output_folder)
 
 
 if __name__ == "__main__":
