@@ -684,7 +684,7 @@ def export_button_clicked(
         _metadata_to_export.append(f"#List of files ({len(all_data_dict.keys())} files)")
         _xaxis_legend = f"##y_axis"
         for _col_index, _image_file_name in enumerate(_metadata_list_of_input_files):
-            _metadata_to_export.append(f" * {_image_file_name}")
+            _metadata_to_export.append(f"# * {_image_file_name}")
             _xaxis_legend += f",# col.{_col_index}"
         
         _metadata_to_export.append(f"#")
