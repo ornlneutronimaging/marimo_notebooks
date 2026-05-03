@@ -64,5 +64,75 @@ def _(instrument_dropdown, mo):
     return (glob, ipts_dropdown, ipts_folders, os)
 
 
+@app.cell
+def _(instrument_dropdown, ipts_dropdown, mo):
+    ipts_selected = ipts_dropdown.value
+    mo.stop(
+        ipts_selected is None or ipts_selected.startswith("(no IPTS"),
+        mo.md("**Please select an IPTS above.**"),
+    )
+
+    if instrument_dropdown.value == "MARS":
+        default_folder_path = f"/HFIR/CG1D/{ipts_selected}/shared"
+    else:
+        default_folder_path = f"/SNS/VENUS/{ipts_selected}/shared"
+
+    folder_browser = mo.ui.file_browser(
+        initial_path=default_folder_path,
+        label="Select folder containing TIFF files",
+        multiple=False,
+        selection_mode="directory",
+        restrict_navigation=False,
+    )
+    load_all_button = mo.ui.run_button(label="Load all TIFFs from folder")
+    mo.vstack([
+        mo.md(f"**Starting path:** `{default_folder_path}`"),
+        mo.md("#### Load TIFFs from a folder"),
+        folder_browser,
+        load_all_button,
+    ])
+    return (
+        default_folder_path,
+        folder_browser,
+        ipts_selected,
+        load_all_button,
+    )
+
+
+@app.cell
+def _(
+    folder_browser,
+    load_all_button,
+    mo,
+    os,
+):
+    import glob as _glob
+
+    folder = folder_browser.value[0].path if folder_browser.value else None
+    mo.stop(
+        folder is None,
+        mo.md("**No folder selected yet.**"),
+    )
+
+    all_tiffs = sorted(
+        _glob.glob(os.path.join(folder, "*.tif"))
+        + _glob.glob(os.path.join(folder, "*.tiff"))
+    )
+    folder_status = mo.md(f"**{len(all_tiffs)} TIFF file(s) found** in `{folder}`")
+    mo.stop(
+        not load_all_button.value or len(all_tiffs) == 0,
+        mo.vstack([
+            folder_status,
+            mo.md("Click the load button to use these files.") if len(all_tiffs) > 0 else mo.md("Select a different folder to continue."),
+        ]),
+    )
+
+    selected_files = all_tiffs
+    source = "folder"
+
+    mo.md(f"**{len(selected_files)} TIFF file(s) selected** from `{folder}` (via {source})")
+    return (selected_files, source)
+
+
 if __name__ == "__main__":
     app.run()
