@@ -260,39 +260,65 @@ def _(
 
 
 @app.cell
-def _(loaded_tiff_array, mo, np):
+def _(loaded_tiff_array, mo):
 
-    loaded_array = loaded_tiff_array()
+    loaded_array_for_slider = loaded_tiff_array()
     mo.stop(
-        loaded_array is None,
-        mo.md("Load TIFF files to display the first image."),
+        loaded_array_for_slider is None,
+        mo.md("Load TIFF files to display images."),
     )
 
-    n_images = len(loaded_array)
-    image_index = 0
-    image_to_display = np.asarray(loaded_array[image_index])
+    n_images = len(loaded_array_for_slider)
+    image_slider = mo.ui.slider(
+        start=0,
+        stop=n_images - 1,
+        step=1,
+        value=0,
+        show_value=True,
+        disabled=(n_images <= 1),
+        label="Image index",
+    )
+
+    mo.vstack([
+        mo.md(f"Use the slider to browse {n_images} loaded image(s)."),
+        image_slider,
+    ])
+
+    return (image_slider, n_images)
+
+
+@app.cell
+def _(image_slider, loaded_tiff_array, mo, np, n_images):
+    loaded_array_for_display = loaded_tiff_array()
+    mo.stop(
+        loaded_array_for_display is None,
+        mo.md("Load TIFF files to display images."),
+    )
+
+    image_index = int(image_slider.value)
+    image_to_display = np.asarray(loaded_array_for_display[image_index])
     # get subset of the image to display
-    image_to_display = image_to_display[::2, ::2]  # Downsample by a factor of 2
+    image_to_display = image_to_display[::4, ::4]  # Downsample by a factor of 4
 
-    mo.md(f"**Displaying first image (1/{n_images})**")
-
+    mo.md(f"**Displaying image {image_index + 1}/{n_images}**")
     return (image_index, image_to_display)
 
 
 @app.cell
-def _(image_index, image_to_display, mo, np):
+def _(image_index, image_to_display, mo, n_images, np):
     import plotly.express as px
 
     image_min = float(np.min(image_to_display))
     image_max = float(np.max(image_to_display))
     fig_image = px.imshow(
         image_to_display,
-        color_continuous_scale="gray",
+        color_continuous_scale="Viridis",
         origin="upper",
         binary_string=True,
     )
+    fig_image.update_coloraxes(showscale=False)
     fig_image.update_layout(
-        title=f"Loaded TIFF image index: {image_index}",
+        title=f"Loaded TIFF image {image_index + 1}/{n_images}",
         margin=dict(l=10, r=10, t=40, b=10),
     )
 
