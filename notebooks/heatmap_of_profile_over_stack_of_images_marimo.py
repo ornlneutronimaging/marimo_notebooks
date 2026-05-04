@@ -19,6 +19,19 @@ def _(mo):
 
 @app.cell
 def _(mo):
+    loaded_tiff_array, set_loaded_tiff_array = mo.state(None)
+    return (loaded_tiff_array, set_loaded_tiff_array)
+
+
+@app.cell
+def _():
+    import numpy as np
+
+    return (np,)
+
+
+@app.cell
+def _(mo):
     instrument_dropdown = mo.ui.dropdown(
         options=["MARS", "VENUS"],
         value="MARS",
@@ -193,8 +206,14 @@ def _(base_name_selector, load_tiff_loading, mo, os, selected_files, re):
 
 
 @app.cell
-def _(filtered_files, load_tiff_button, mo, set_load_tiff_loading):
-    import numpy as np
+def _(
+    filtered_files,
+    load_tiff_button,
+    mo,
+    np,
+    set_load_tiff_loading,
+    set_loaded_tiff_array,
+):
     from tifffile import imread
 
     mo.stop(
@@ -232,11 +251,57 @@ def _(filtered_files, load_tiff_button, mo, set_load_tiff_loading):
                 f"**Loaded {len(loaded_images)} TIFF images with varying shapes** "
                 "into an object-dtype NumPy array."
             )
+        set_loaded_tiff_array(tiff_array)
     finally:
         set_load_tiff_loading(False)
 
     mo.md(status_message)
-    return (tiff_array,)
+    return
+
+
+@app.cell
+def _(loaded_tiff_array, mo, np):
+
+    loaded_array = loaded_tiff_array()
+    mo.stop(
+        loaded_array is None,
+        mo.md("Load TIFF files to display the first image."),
+    )
+
+    n_images = len(loaded_array)
+    image_index = 0
+    image_to_display = np.asarray(loaded_array[image_index])
+    # get subset of the image to display
+    image_to_display = image_to_display[::2, ::2]  # Downsample by a factor of 2
+
+    mo.md(f"**Displaying first image (1/{n_images})**")
+
+    return (image_index, image_to_display)
+
+
+@app.cell
+def _(image_index, image_to_display, mo, np):
+    import plotly.express as px
+
+    image_min = float(np.min(image_to_display))
+    image_max = float(np.max(image_to_display))
+    fig_image = px.imshow(
+        image_to_display,
+        color_continuous_scale="gray",
+        origin="upper",
+        binary_string=True,
+    )
+    fig_image.update_layout(
+        title=f"Loaded TIFF image index: {image_index}",
+        margin=dict(l=10, r=10, t=40, b=10),
+    )
+
+    mo.vstack([
+        mo.ui.plotly(fig_image),
+        mo.md(f"Image intensity range: min={image_min:.3f}, max={image_max:.3f}"),
+    ])
+
+    return (fig_image,)
 
 
 if __name__ == "__main__":
