@@ -84,10 +84,10 @@ def _(instrument_dropdown, ipts_dropdown, mo):
         selection_mode="directory",
         restrict_navigation=False,
     )
-    load_all_button = mo.ui.run_button(label="Load all TIFFs from folder")
+    load_all_button = mo.ui.run_button(label="Display base name of TIFF files in the selected folder")
     mo.vstack([
         mo.md(f"**Starting path:** `{default_folder_path}`"),
-        mo.md("#### Load TIFFs from a folder"),
+        mo.md("#### Display base name of TIFF files in the selected folder"),
         folder_browser,
         load_all_button,
     ])
@@ -107,6 +107,7 @@ def _(
     os,
 ):
     import glob as _glob
+    import re
 
     folder = folder_browser.value[0].path if folder_browser.value else None
     mo.stop(
@@ -130,8 +131,46 @@ def _(
     selected_files = all_tiffs
     source = "folder"
 
-    mo.md(f"**{len(selected_files)} TIFF file(s) selected** from `{folder}` (via {source})")
-    return (selected_files, source)
+    base_names = sorted(
+        {
+            re.sub(r"_[0-9]+$", "", os.path.splitext(os.path.basename(path))[0])
+            for path in selected_files
+        }
+    )
+    base_name_selector = mo.ui.multiselect(
+        options=base_names,
+        value=[],
+        label="Select one or more TIFF base names",
+        full_width=True,
+    )
+
+    mo.vstack([
+        mo.md(f"**{len(selected_files)} TIFF file(s) selected** from `{folder}` (via {source})"),
+        mo.md(f"**{len(base_names)} base name(s) found** (final numeric index removed)."),
+        base_name_selector,
+    ])
+    return (base_name_selector, selected_files, source, re)
+
+
+@app.cell
+def _(base_name_selector, mo, os, selected_files, re):
+
+    selected_base_names = set(base_name_selector.value)
+    mo.stop(
+        len(selected_base_names) == 0,
+        mo.md("Select one or more base names to see how many TIFF files will be used."),
+    )
+
+    filtered_files = [
+        path
+        for path in selected_files
+        if re.sub(r"_[0-9]+$", "", os.path.splitext(os.path.basename(path))[0]) in selected_base_names
+    ]
+
+    mo.md(
+        f"**{len(filtered_files)} TIFF file(s) will be used** for {len(selected_base_names)} selected base name(s)."
+    )
+    return (filtered_files, selected_base_names)
 
 
 if __name__ == "__main__":
