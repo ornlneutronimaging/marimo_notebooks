@@ -13,6 +13,12 @@ def _():
 
 @app.cell
 def _(mo):
+    load_tiff_loading, set_load_tiff_loading = mo.state(False)
+    return (load_tiff_loading, set_load_tiff_loading)
+
+
+@app.cell
+def _(mo):
     instrument_dropdown = mo.ui.dropdown(
         options=["MARS", "VENUS"],
         value="MARS",
@@ -153,24 +159,84 @@ def _(
 
 
 @app.cell
-def _(base_name_selector, mo, os, selected_files, re):
+def _(base_name_selector, load_tiff_loading, mo, os, selected_files, re):
 
     selected_base_names = set(base_name_selector.value)
-    mo.stop(
-        len(selected_base_names) == 0,
-        mo.md("Select one or more base names to see how many TIFF files will be used."),
-    )
-
     filtered_files = [
         path
         for path in selected_files
         if re.sub(r"_[0-9]+$", "", os.path.splitext(os.path.basename(path))[0]) in selected_base_names
     ]
 
-    mo.md(
-        f"**{len(filtered_files)} TIFF file(s) will be used** for {len(selected_base_names)} selected base name(s)."
+    is_loading = load_tiff_loading()
+
+    load_tiff_button = mo.ui.run_button(
+        label="Loading TIFF ..." if is_loading else "Load TIFF",
+        disabled=(len(selected_base_names) == 0 or is_loading),
     )
-    return (filtered_files, selected_base_names)
+
+    mo.stop(
+        len(selected_base_names) == 0,
+        mo.vstack([
+            mo.md("Select one or more base names to see how many TIFF files will be used."),
+            load_tiff_button,
+        ]),
+    )
+
+    mo.vstack([
+        mo.md(
+            f"**{len(filtered_files)} TIFF file(s) will be used** for {len(selected_base_names)} selected base name(s)."
+        ),
+        load_tiff_button,
+    ])
+    return (filtered_files, load_tiff_button, selected_base_names)
+
+
+@app.cell
+def _(filtered_files, load_tiff_button, mo, set_load_tiff_loading):
+    import numpy as np
+    from tifffile import imread
+
+    mo.stop(
+        not load_tiff_button.value,
+        mo.md("Click **Load TIFF** to load the selected TIFF files into a NumPy array."),
+    )
+    mo.stop(
+        len(filtered_files) == 0,
+        mo.md("No TIFF files match the selected base name(s)."),
+    )
+
+    set_load_tiff_loading(True)
+    try:
+        loaded_images = []
+        for path in mo.status.progress_bar(
+            filtered_files,
+            title="Loading TIFF ...",
+            subtitle=f"{len(filtered_files)} file(s)",
+            completion_title="TIFF loading complete",
+            show_rate=False,
+        ):
+            loaded_images.append(imread(path))
+        image_shapes = {img.shape for img in loaded_images}
+
+        if len(image_shapes) == 1:
+            tiff_array = np.stack(loaded_images, axis=0)
+            status_message = (
+                f"**Loaded TIFF array shape:** `{tiff_array.shape}` "
+                f"(dtype: `{tiff_array.dtype}`)"
+            )
+        else:
+            # Keep heterogeneous image sizes without data loss.
+            tiff_array = np.array(loaded_images, dtype=object)
+            status_message = (
+                f"**Loaded {len(loaded_images)} TIFF images with varying shapes** "
+                "into an object-dtype NumPy array."
+            )
+    finally:
+        set_load_tiff_loading(False)
+
+    mo.md(status_message)
+    return (tiff_array,)
 
 
 if __name__ == "__main__":
