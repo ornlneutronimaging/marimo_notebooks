@@ -298,7 +298,7 @@ def _(image_slider, loaded_tiff_array, mo, np, n_images):
     image_index = int(image_slider.value)
     image_to_display = np.asarray(loaded_array_for_display[image_index])
     # get subset of the image to display
-    image_to_display = image_to_display[::4, ::4]  # Downsample by a factor of 4
+    image_to_display = image_to_display[::10, ::10]  # Downsample by a factor of 10
 
     mo.md(f"**Displaying image {image_index + 1}/{n_images}**")
     return (image_index, image_to_display)
@@ -314,11 +314,19 @@ def _(image_index, image_to_display, mo, n_images, np):
         image_to_display,
         color_continuous_scale="Viridis",
         origin="upper",
-        binary_string=True,
+        binary_string=False,
     )
-    fig_image.update_coloraxes(showscale=False)
+    fig_image.update_traces(
+        hovertemplate="x: %{x}<br>y: %{y}<br>intensity: %{z}<extra></extra>"
+    )
+    fig_image.update_coloraxes(
+        showscale=True,
+        colorbar=dict(title="Intensity"),
+    )
     fig_image.update_layout(
         title=f"Loaded TIFF image {image_index + 1}/{n_images}",
+        width=1200,
+        height=900,
         margin=dict(l=10, r=10, t=40, b=10),
     )
 
